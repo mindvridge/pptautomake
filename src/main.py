@@ -47,20 +47,47 @@ def load_config(config_path: str | None = None) -> dict:
     return {}
 
 
-def parse_slide_ranges(slides_str: str) -> list[int]:
+def parse_slide_ranges(slides_str: str, max_slide: int | None = None) -> list[int]:
     """슬라이드 번호 문자열을 파싱한다.
 
     예: "1,3,5-8" -> [0, 2, 4, 5, 6, 7] (0-indexed)
+
+    Args:
+        slides_str: 슬라이드 번호 문자열 (1-indexed)
+        max_slide: 최대 슬라이드 번호 (1-indexed). 초과 시 경고 후 제외.
     """
     indices = []
+    skipped = []
     for part in slides_str.split(','):
         part = part.strip()
-        if '-' in part:
-            start, end = part.split('-', 1)
-            for i in range(int(start), int(end) + 1):
-                indices.append(i - 1)  # 1-indexed -> 0-indexed
-        else:
-            indices.append(int(part) - 1)
+        if not part:
+            continue
+        try:
+            if '-' in part:
+                start, end = part.split('-', 1)
+                for i in range(int(start), int(end) + 1):
+                    if i < 1:
+                        continue
+                    if max_slide and i > max_slide:
+                        skipped.append(i)
+                        continue
+                    indices.append(i - 1)
+            else:
+                val = int(part)
+                if val < 1:
+                    continue
+                if max_slide and val > max_slide:
+                    skipped.append(val)
+                    continue
+                indices.append(val - 1)
+        except ValueError:
+            logger.warning("잘못된 슬라이드 번호 무시: '%s'", part)
+
+    if skipped:
+        logger.warning(
+            "존재하지 않는 슬라이드 번호 무시: %s (최대: %d)",
+            skipped, max_slide,
+        )
     return sorted(set(indices))
 
 

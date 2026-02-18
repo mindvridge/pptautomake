@@ -126,17 +126,32 @@ class SlideComposer:
             self._copy_text_elements(prs, slide_idx, new_slide, analysis)
 
         # 각 도식 데이터를 새 슬라이드에 빌드
+        shapes_before = len(new_slide.shapes)
+        built_count = 0
         for classified_elem, diagram_data in diagram_pairs:
             if diagram_data.nodes or diagram_data.table_data or diagram_data.chart_data:
                 builder.build(new_slide, diagram_data)
+                built_count += 1
+            elif diagram_data.diagram_type != 'unknown':
+                logger.warning(
+                    "슬라이드 %d: 도식 '%s'에 빌드할 데이터가 없습니다",
+                    slide_idx + 1, diagram_data.diagram_type,
+                )
+
+        shapes_after = len(new_slide.shapes)
+        if built_count > 0 and shapes_after == shapes_before:
+            logger.warning(
+                "슬라이드 %d: 빌드를 실행했지만 도형이 생성되지 않았습니다",
+                slide_idx + 1,
+            )
 
         # 슬라이드 순서 조정 (원본 바로 뒤로 이동)
         if self.insert_mode == 'after_original':
             self._move_slide(prs, len(prs.slides) - 1, slide_idx + 1)
 
         logger.info(
-            "슬라이드 %d 뒤에 재구성 슬라이드 삽입 완료",
-            slide_idx + 1,
+            "슬라이드 %d 뒤에 재구성 슬라이드 삽입 완료 (도형 %d개 생성)",
+            slide_idx + 1, shapes_after - shapes_before,
         )
 
     def _copy_text_elements(

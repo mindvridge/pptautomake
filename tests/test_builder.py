@@ -243,3 +243,97 @@ def test_cycle_diagram(builder, blank_slide):
     builder.build_cycle_diagram(slide, data)
 
     assert len(list(slide.shapes)) > 0
+
+
+def test_hierarchy_creation(builder, blank_slide):
+    """계층 구조 다이어그램이 올바르게 생성되는지 확인"""
+    prs, slide = blank_slide
+    data = DiagramData(
+        diagram_type='hierarchy',
+        title='조직도 테스트',
+        nodes=[
+            {'id': 'ceo', 'text': 'CEO', 'color_fill': '#2D6A4F', 'color_text': '#FFFFFF'},
+            {'id': 'cto', 'text': 'CTO', 'color_fill': '#40916C', 'color_text': '#FFFFFF'},
+            {'id': 'cfo', 'text': 'CFO', 'color_fill': '#40916C', 'color_text': '#FFFFFF'},
+            {'id': 'dev', 'text': '개발팀', 'color_fill': '#95D5B2', 'color_text': '#333333'},
+        ],
+        connections=[
+            {'from': 'ceo', 'to': 'cto', 'type': 'arrow'},
+            {'from': 'ceo', 'to': 'cfo', 'type': 'arrow'},
+            {'from': 'cto', 'to': 'dev', 'type': 'arrow'},
+        ],
+        layout={'direction': 'vertical'},
+    )
+    builder.build_hierarchy(slide, data)
+
+    assert len(list(slide.shapes)) > 0
+
+
+def test_hierarchy_no_connections(builder, blank_slide):
+    """connections 없는 hierarchy는 수직 플로우차트로 폴백"""
+    prs, slide = blank_slide
+    data = DiagramData(
+        diagram_type='hierarchy',
+        nodes=[
+            {'id': 'a', 'text': 'A', 'color_fill': '#4A90D9', 'color_text': '#FFFFFF'},
+            {'id': 'b', 'text': 'B', 'color_fill': '#4A90D9', 'color_text': '#FFFFFF'},
+        ],
+        connections=[],
+        layout={'direction': 'vertical'},
+    )
+    builder.build_hierarchy(slide, data)
+
+    assert len(list(slide.shapes)) > 0
+
+
+def test_infographic_creation(builder, blank_slide):
+    """인포그래픽 레이아웃이 올바르게 생성되는지 확인"""
+    prs, slide = blank_slide
+    data = DiagramData(
+        diagram_type='infographic',
+        title='인포그래픽 테스트',
+        nodes=[
+            {'id': f'node{i}', 'text': f'포인트 {i+1}: 설명 텍스트', 'color_fill': '#4A90D9'}
+            for i in range(6)
+        ],
+    )
+    builder.build_infographic(slide, data)
+
+    # 제목 + 6카드(배경+번호+텍스트=3) = 제목 1 + 6*3 = 19
+    shapes = list(slide.shapes)
+    assert len(shapes) >= 7  # 최소 제목 + 6개 카드 배경
+
+
+def test_node_text_truncation(builder, blank_slide):
+    """긴 노드 텍스트가 올바르게 잘리는지 확인"""
+    prs, slide = blank_slide
+    long_text = 'A' * 300
+    data = DiagramData(
+        diagram_type='process',
+        nodes=[
+            {'id': 'node0', 'text': long_text, 'color_fill': '#4A90D9', 'color_text': '#FFFFFF'},
+        ],
+    )
+    builder.build_process_diagram(slide, data)
+
+    # 텍스트가 잘렸는지 확인
+    for shape in slide.shapes:
+        if shape.has_text_frame:
+            for p in shape.text_frame.paragraphs:
+                assert len(p.text) <= builder.MAX_NODE_TEXT_LEN
+
+
+def test_build_hierarchy_dispatches(builder, blank_slide):
+    """build()가 hierarchy 유형에 대해 build_hierarchy를 호출하는지 확인"""
+    prs, slide = blank_slide
+    data = DiagramData(
+        diagram_type='hierarchy',
+        nodes=[
+            {'id': 'a', 'text': 'Root', 'color_fill': '#4A90D9', 'color_text': '#FFFFFF'},
+            {'id': 'b', 'text': 'Child', 'color_fill': '#4A90D9', 'color_text': '#FFFFFF'},
+        ],
+        connections=[{'from': 'a', 'to': 'b', 'type': 'arrow'}],
+    )
+    builder.build(slide, data)
+
+    assert len(list(slide.shapes)) > 0

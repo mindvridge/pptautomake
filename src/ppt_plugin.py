@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -63,10 +64,27 @@ def save_presentation_to_temp(presentation) -> str:
     temp_dir.mkdir(exist_ok=True)
     temp_path = str(temp_dir / 'current_presentation.pptx')
     presentation.SaveCopyAs(temp_path)
+
+    if not Path(temp_path).exists():
+        raise FileNotFoundError(f'프레젠테이션 저장 실패: {temp_path}')
     return temp_path
 
 
-def insert_slides_from_file(ppt_app, presentation, rebuilt_path: str, slide_count: int):
+def create_backup(presentation) -> str | None:
+    """현재 프레젠테이션의 백업을 생성한다."""
+    try:
+        temp_dir = Path(tempfile.gettempdir()) / 'pptautomake' / 'backups'
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        name = Path(presentation.Name).stem
+        backup_path = str(temp_dir / f'{name}_backup.pptx')
+        presentation.SaveCopyAs(backup_path)
+        return backup_path
+    except Exception as e:
+        logger.warning('백업 생성 실패: %s', e)
+        return None
+
+
+def insert_slides_from_file(presentation, rebuilt_path: str) -> bool:
     """변환된 PPTX의 슬라이드를 현재 프레젠테이션 끝에 삽입한다."""
     try:
         last_slide = presentation.Slides.Count
@@ -134,11 +152,18 @@ def run_pipeline(
     diagram_analyzer = DiagramAnalyzer(config.get('analysis', {}))
     diagram_results = {}
 
+    total_diagrams = sum(
+        len(c.diagram_elements) for c in classifications if c.needs_rebuild
+    )
+    processed = 0
+
     for classification in classifications:
         if not classification.needs_rebuild:
             continue
         slide_diagrams = []
         for ce in classification.diagram_elements:
+            processed += 1
+            print(f'  [{processed}/{total_diagrams}] 슬라이드 {classification.slide_index + 1} 분석 중...')
             diagram_data = diagram_analyzer.analyze(ce)
             slide_diagrams.append((ce, diagram_data))
             detail = {
@@ -147,7 +172,7 @@ def run_pipeline(
                 'node_count': diagram_data.node_count,
             }
             summary['details'].append(detail)
-            print(f'  -> 슬라이드 {detail["slide"]}: {detail["diagram_type"]} ({detail["node_count"]}개 노드)')
+            print(f'    -> {detail["diagram_type"]} ({detail["node_count"]}개 노드)')
         if slide_diagrams:
             diagram_results[classification.slide_index] = slide_diagrams
 
@@ -253,6 +278,15 @@ def main():
     print(f'  -> 연결됨: {ppt_name}')
     print(f'  -> 슬라이드 수: {presentation.Slides.Count}')
 
+    # 백업 생성
+    total_slides = presentation.Slides.Count
+    print('[준비] 백업 생성 중...')
+    backup_path = create_backup(presentation)
+    if backup_path:
+        print(f'  -> 백업: {backup_path}')
+    else:
+        print('  -> 백업 생성 실패 (계속 진행)')
+
     # 임시 파일로 저장
     print('[준비] 프레젠테이션 복사 중...')
     temp_path = save_presentation_to_temp(presentation)
@@ -262,7 +296,10 @@ def main():
     slide_indices = None
     if args.slides:
         from src.main import parse_slide_ranges
-        slide_indices = parse_slide_ranges(args.slides)
+        slide_indices = parse_slide_ranges(args.slides, max_slide=total_slides)
+        if not slide_indices:
+            print(f'[오류] 유효한 슬라이드 번호가 없습니다 (전체: {total_slides}개)')
+            sys.exit(1)
         print(f'  -> 처리 대상: 슬라이드 {[i + 1 for i in slide_indices]}')
 
     print()
@@ -279,7 +316,7 @@ def main():
     if output_path and not args.no_insert:
         # 변환된 슬라이드를 현재 PPT에 삽입
         print('\n[삽입] 변환된 슬라이드를 현재 프레젠테이션에 삽입 중...')
-        insert_slides_from_file(ppt_app, presentation, output_path, presentation.Slides.Count)
+        insert_slides_from_file(presentation, output_path)
 
     print('\n완료!')
 

@@ -64,13 +64,17 @@ def install_dependencies():
         return False
 
     try:
-        subprocess.check_call(
+        result = subprocess.run(
             [sys.executable, '-m', 'pip', 'install', '-r', str(req_file), '--quiet'],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            capture_output=True, text=True,
         )
-    except subprocess.CalledProcessError:
-        print('  [경고] 일부 패키지 설치에 실패했습니다. 수동 설치가 필요할 수 있습니다.')
+        if result.returncode != 0:
+            print('  [경고] 일부 패키지 설치에 실패했습니다:')
+            for line in result.stderr.strip().splitlines()[-3:]:
+                print(f'         {line}')
+            print(f'         수동 설치: pip install -r {req_file}')
+    except Exception:
+        print('  [경고] 패키지 설치 실행에 실패했습니다.')
         print(f'         pip install -r {req_file}')
 
     # pywin32는 반드시 설치

@@ -124,8 +124,8 @@ Private Sub RunPlugin(projectPath As String, extraArgs As String)
     Set wsh = CreateObject("WScript.Shell")
     wsh.CurrentDirectory = projectPath
 
-    ' 명령 프롬프트 창에서 실행 (진행 상황 확인 가능)
-    wsh.Run "cmd /k """ & cmd & """", 1, False
+    ' 실행 후 결과 확인을 위해 pause, 그리고 자동 종료
+    wsh.Run "cmd /c """ & cmd & " && echo. && echo 완료! 아무 키나 누르면 닫힙니다. && pause >nul""", 1, False
 
     Set wsh = Nothing
 End Sub

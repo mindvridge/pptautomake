@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -80,9 +81,16 @@ class DiagramData:
 class DiagramAnalyzer:
     """도식 상세 분석 모듈 - Vision API 및 XML 구조 분석"""
 
+    # API 호출 설정
+    MAX_RETRIES = 3
+    RETRY_DELAYS = [2, 4, 8]  # 지수 백오프 (초)
+    API_TIMEOUT = 60  # 초
+
     def __init__(self, config: dict | None = None):
         self.config = config or {}
         self.vision_model = self.config.get('vision_model', 'claude-sonnet-4-20250514')
+        self.api_timeout = self.config.get('api_timeout', self.API_TIMEOUT)
+        self.max_retries = self.config.get('max_retries', self.MAX_RETRIES)
         self._anthropic_client = None
 
     @property
@@ -125,37 +133,62 @@ class DiagramAnalyzer:
         if content_type not in ('image/png', 'image/jpeg', 'image/gif', 'image/webp'):
             image_blob, content_type = self._convert_image(image_blob, content_type)
 
-        try:
-            image_b64 = base64.b64encode(image_blob).decode('utf-8')
-            response = self.anthropic_client.messages.create(
-                model=self.vision_model,
-                max_tokens=4096,
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": content_type,
-                                "data": image_b64,
+        image_b64 = base64.b64encode(image_blob).decode('utf-8')
+        last_error = None
+
+        for attempt in range(self.max_retries):
+            try:
+                response = self.anthropic_client.messages.create(
+                    model=self.vision_model,
+                    max_tokens=4096,
+                    timeout=self.api_timeout,
+                    messages=[{
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": content_type,
+                                    "data": image_b64,
+                                },
                             },
-                        },
-                        {
-                            "type": "text",
-                            "text": VISION_ANALYSIS_PROMPT,
-                        },
-                    ],
-                }],
-            )
+                            {
+                                "type": "text",
+                                "text": VISION_ANALYSIS_PROMPT,
+                            },
+                        ],
+                    }],
+                )
 
-            response_text = response.content[0].text
-            diagram_json = self._parse_json_response(response_text)
-            return self._json_to_diagram_data(diagram_json)
+                response_text = response.content[0].text
+                diagram_json = self._parse_json_response(response_text)
 
-        except Exception as e:
-            logger.error("Vision API 분석 실패: %s", e)
-            return DiagramData(diagram_type="unknown")
+                if not diagram_json:
+                    logger.warning(
+                        "Vision API 응답 JSON 파싱 실패 (시도 %d/%d): 빈 결과",
+                        attempt + 1, self.max_retries,
+                    )
+                    return DiagramData(diagram_type="unknown")
+
+                return self._json_to_diagram_data(diagram_json)
+
+            except Exception as e:
+                last_error = e
+                if attempt < self.max_retries - 1:
+                    delay = self.RETRY_DELAYS[min(attempt, len(self.RETRY_DELAYS) - 1)]
+                    logger.warning(
+                        "Vision API 호출 실패 (시도 %d/%d): %s - %d초 후 재시도",
+                        attempt + 1, self.max_retries, e, delay,
+                    )
+                    time.sleep(delay)
+                else:
+                    logger.error(
+                        "Vision API 분석 실패 (%d회 시도 후 포기): %s",
+                        self.max_retries, e,
+                    )
+
+        return DiagramData(diagram_type="unknown")
 
     def _convert_image(self, image_blob: bytes, content_type: str) -> tuple[bytes, str]:
         """지원하지 않는 이미지 형식을 PNG로 변환한다."""

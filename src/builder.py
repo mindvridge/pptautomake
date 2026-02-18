@@ -42,9 +42,12 @@ class NativePPTXBuilder:
         'cycle': 'build_cycle_diagram',
         'bar_chart': 'build_bar_chart',
         'pie_chart': 'build_pie_chart',
-        'hierarchy': 'build_flowchart',  # 계층구조는 플로우차트 빌더 재사용
-        'infographic': 'build_grid_layout',  # 인포그래픽은 그리드로 폴백
+        'hierarchy': 'build_hierarchy',
+        'infographic': 'build_infographic',
     }
+
+    # 노드 텍스트 최대 길이 (넘치면 잘라냄)
+    MAX_NODE_TEXT_LEN = 200
 
     def __init__(self, config: dict | None = None):
         self.config = config or {}
@@ -131,7 +134,7 @@ class NativePPTXBuilder:
 
             # 기존 단락의 텍스트 설정
             p = tf.paragraphs[0]
-            p.text = node.get('text', '')
+            p.text = self._get_node_text(node)
             p.alignment = PP_ALIGN.CENTER
 
             text_color = node.get('color_text', get_contrast_text_color(fill_color))
@@ -257,7 +260,7 @@ class NativePPTXBuilder:
             tf = shape.text_frame
             tf.word_wrap = True
             p = tf.paragraphs[0]
-            p.text = node.get('text', '')
+            p.text = self._get_node_text(node)
             p.alignment = PP_ALIGN.CENTER
             text_color = node.get('color_text', get_contrast_text_color(fill_color))
             for run in p.runs:
@@ -325,7 +328,7 @@ class NativePPTXBuilder:
                 tf = shape.text_frame
                 tf.word_wrap = True
                 p = tf.paragraphs[0]
-                p.text = node.get('text', '')
+                p.text = self._get_node_text(node)
                 p.alignment = PP_ALIGN.CENTER
                 text_color = node.get('color_text', get_contrast_text_color(fill_color))
                 for run in p.runs:
@@ -394,7 +397,7 @@ class NativePPTXBuilder:
             tf = txbox.text_frame
             tf.word_wrap = True
             p = tf.paragraphs[0]
-            p.text = node.get('text', '')
+            p.text = self._get_node_text(node)
             p.alignment = PP_ALIGN.CENTER
             for run in p.runs:
                 run.font.size = Pt(10)
@@ -437,7 +440,7 @@ class NativePPTXBuilder:
             tf = shape.text_frame
             tf.word_wrap = True
             p = tf.paragraphs[0]
-            p.text = node.get('text', '')
+            p.text = self._get_node_text(node)
             p.alignment = PP_ALIGN.CENTER
             text_color = node.get('color_text', get_contrast_text_color(fill_color))
             for run in p.runs:
@@ -544,7 +547,198 @@ class NativePPTXBuilder:
         chart = chart_frame.chart
         chart.has_legend = True
 
+    def build_hierarchy(self, slide, diagram_data: DiagramData) -> None:
+        """계층 구조 다이어그램을 생성한다. (트리형 상하 배치)"""
+        nodes = diagram_data.nodes
+        if not nodes:
+            return
+
+        if diagram_data.title:
+            self._add_title(slide, diagram_data.title)
+
+        connections = diagram_data.connections
+
+        # 레벨별 노드 분류 (connections에서 부모-자식 관계 추론)
+        node_map = {n.get('id', f'node{i}'): n for i, n in enumerate(nodes)}
+        children_of: dict[str, list[str]] = {}
+        has_parent: set[str] = set()
+
+        for conn in connections:
+            parent = conn.get('from', '')
+            child = conn.get('to', '')
+            if parent and child:
+                children_of.setdefault(parent, []).append(child)
+                has_parent.add(child)
+
+        # 루트 노드 찾기 (부모가 없는 노드)
+        roots = [nid for nid in node_map if nid not in has_parent]
+        if not roots:
+            roots = [nodes[0].get('id', 'node0')]
+
+        # BFS로 레벨 할당
+        levels: list[list[str]] = []
+        visited = set()
+        queue = list(roots)
+        while queue:
+            levels.append(queue)
+            visited.update(queue)
+            next_level = []
+            for nid in queue:
+                for child in children_of.get(nid, []):
+                    if child not in visited:
+                        next_level.append(child)
+            queue = next_level
+
+        # connections가 없으면 단순 수직 배치
+        if len(levels) == 1 and len(nodes) > 1:
+            self._build_vertical_flowchart(slide, diagram_data)
+            return
+
+        # 레벨별 렌더링
+        available_width = self.slide_width - 2 * self.margin
+        level_height = Inches(1.2)
+        spacing_y = Inches(0.6)
+        start_y = Inches(1.5)
+
+        for level_idx, level_nodes in enumerate(levels):
+            y = int(start_y + level_idx * (level_height + spacing_y))
+            count = len(level_nodes)
+            if count == 0:
+                continue
+
+            node_width = min(
+                int(available_width / count - Inches(0.3)),
+                int(Inches(3.5)),
+            )
+            total_width = count * node_width + (count - 1) * int(Inches(0.3))
+            start_x = int(self.slide_width / 2 - total_width / 2)
+
+            for i, nid in enumerate(level_nodes):
+                node = node_map.get(nid, {'text': nid, 'color_fill': self.color_primary})
+                x = start_x + i * (node_width + int(Inches(0.3)))
+
+                shape = slide.shapes.add_shape(
+                    MSO_SHAPE.ROUNDED_RECTANGLE,
+                    x, y, node_width, int(level_height),
+                )
+
+                fill_color = node.get('color_fill', self.color_primary)
+                shape.fill.solid()
+                shape.fill.fore_color.rgb = hex_to_rgb(fill_color)
+                shape.line.fill.background()
+
+                tf = shape.text_frame
+                tf.word_wrap = True
+                p = tf.paragraphs[0]
+                p.text = self._get_node_text(node)
+                p.alignment = PP_ALIGN.CENTER
+                text_color = node.get('color_text', get_contrast_text_color(fill_color))
+                for run in p.runs:
+                    run.font.size = self.body_size
+                    run.font.name = self.font_body
+                    run.font.color.rgb = hex_to_rgb(text_color)
+
+            # 레벨 간 연결선 (아래쪽 화살표)
+            if level_idx < len(levels) - 1:
+                arrow_y = int(y + level_height + int(spacing_y * 0.1))
+                arrow_x = int(self.slide_width / 2 - Inches(0.15))
+                arrow = slide.shapes.add_shape(
+                    MSO_SHAPE.DOWN_ARROW,
+                    arrow_x, arrow_y,
+                    int(Inches(0.3)), int(spacing_y * 0.6),
+                )
+                arrow.fill.solid()
+                arrow.fill.fore_color.rgb = hex_to_rgb(self.color_text)
+                arrow.line.fill.background()
+
+    def build_infographic(self, slide, diagram_data: DiagramData) -> None:
+        """인포그래픽 레이아웃을 생성한다. (아이콘 + 텍스트 카드)"""
+        nodes = diagram_data.nodes
+        if not nodes:
+            return
+
+        if diagram_data.title:
+            self._add_title(slide, diagram_data.title)
+
+        node_count = len(nodes)
+        cols = min(node_count, 4)
+        rows = math.ceil(node_count / cols)
+
+        available_width = self.slide_width - 2 * self.margin
+        available_height = self.slide_height - Inches(2.5)
+        card_width = int(available_width / cols - Inches(0.3))
+        card_height = int(available_height / rows - Inches(0.3))
+        start_y = Inches(1.8)
+
+        # 번호 색상 교대
+        accent_colors = [self.color_primary, self.color_secondary, self.color_accent]
+
+        node_idx = 0
+        for r in range(rows):
+            for c in range(cols):
+                if node_idx >= node_count:
+                    break
+                node = nodes[node_idx]
+                x = int(self.margin + c * (card_width + Inches(0.3)))
+                y = int(start_y + r * (card_height + Inches(0.3)))
+
+                # 카드 배경 (연한 색)
+                card = slide.shapes.add_shape(
+                    MSO_SHAPE.ROUNDED_RECTANGLE,
+                    x, y, card_width, card_height,
+                )
+                card.fill.solid()
+                card.fill.fore_color.rgb = hex_to_rgb('#F5F5F5')
+                card.line.color.rgb = hex_to_rgb('#E0E0E0')
+
+                # 번호 원
+                accent = accent_colors[node_idx % len(accent_colors)]
+                num_size = int(Inches(0.5))
+                num_x = x + int(Inches(0.2))
+                num_y = y + int(Inches(0.2))
+                num_shape = slide.shapes.add_shape(
+                    MSO_SHAPE.OVAL,
+                    num_x, num_y, num_size, num_size,
+                )
+                num_shape.fill.solid()
+                num_shape.fill.fore_color.rgb = hex_to_rgb(accent)
+                num_shape.line.fill.background()
+
+                tf = num_shape.text_frame
+                p = tf.paragraphs[0]
+                p.text = str(node_idx + 1)
+                p.alignment = PP_ALIGN.CENTER
+                for run in p.runs:
+                    run.font.size = Pt(11)
+                    run.font.bold = True
+                    run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+
+                # 텍스트
+                text_x = x + int(Inches(0.2))
+                text_y = num_y + num_size + int(Inches(0.15))
+                text_w = card_width - int(Inches(0.4))
+                text_h = card_height - num_size - int(Inches(0.55))
+                txbox = slide.shapes.add_textbox(text_x, text_y, text_w, text_h)
+                tf = txbox.text_frame
+                tf.word_wrap = True
+                p = tf.paragraphs[0]
+                p.text = self._get_node_text(node)
+                p.alignment = PP_ALIGN.LEFT
+                for run in p.runs:
+                    run.font.size = Pt(10)
+                    run.font.name = self.font_body
+                    run.font.color.rgb = hex_to_rgb(self.color_text)
+
+                node_idx += 1
+
     # --- 유틸리티 메서드 ---
+
+    def _get_node_text(self, node: dict) -> str:
+        """노드에서 텍스트를 가져오고 최대 길이를 적용한다."""
+        text = str(node.get('text', '') or '')
+        if len(text) > self.MAX_NODE_TEXT_LEN:
+            text = text[:self.MAX_NODE_TEXT_LEN - 3] + '...'
+        return text
 
     def _add_title(self, slide, title_text: str) -> None:
         """슬라이드에 제목 텍스트를 추가한다."""

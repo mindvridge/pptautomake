@@ -260,7 +260,7 @@ class SlideAnalyzer:
                     'x': 0, 'y': 0, 'width': 0, 'height': 0
                 }
                 children.append(SlideElement(
-                    element_type='shape',
+                    element_type='group_shape',
                     position=pos,
                     content=text,
                     xml_element=xml_elem,
@@ -268,6 +268,7 @@ class SlideAnalyzer:
                     metadata={
                         'fill_color': color,
                         'child_count': child_count,
+                        'has_text': bool(text and text.strip()),
                         'from_xml_fallback': True,
                     },
                 ))
