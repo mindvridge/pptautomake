@@ -96,7 +96,7 @@ class DiagramAnalyzer:
         self.config = config or {}
         self.vision_backend = self.config.get('vision_backend', 'local')
         self.vision_model = self.config.get('vision_model', 'claude-sonnet-4-20250514')
-        self.gemini_model = self.config.get('gemini_model', 'gemini-2.5-flash')
+        self.gemini_model = self.config.get('gemini_model', 'gemini-3-flash')
         self.ollama_model = self.config.get('ollama_model', 'llama3.2-vision')
         self.ollama_base_url = self.config.get('ollama_base_url', 'http://localhost:11434')
         self.local_model = self.config.get('local_model', 'Qwen/Qwen2.5-VL-7B-Instruct')
