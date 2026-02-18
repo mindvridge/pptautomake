@@ -364,3 +364,68 @@ body {
 .btn-download:hover {
   background: var(--primary-hover);
 }
+
+/* 현재 파일 사용 버튼 */
+.btn-accent {
+  width: 100%;
+  padding: 10px 12px;
+  background: #1565C0;
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: background 0.2s;
+}
+
+.btn-accent:hover:not(:disabled) {
+  background: #0D47A1;
+}
+
+.btn-accent:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+/* 구분선 */
+.divider {
+  display: flex;
+  align-items: center;
+  margin: 10px 0;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.divider span {
+  padding: 0 8px;
+}
+
+/* 자동 삽입 옵션 */
+.option-group label input[type="checkbox"] {
+  margin-right: 6px;
+  accent-color: var(--primary);
+}
+
+/* 삽입 성공 안내 */
+.insert-success-note {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #E8F5E9;
+  border-radius: var(--radius);
+  font-size: 11px;
+  color: var(--success);
+  text-align: center;
+}

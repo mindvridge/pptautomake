@@ -11,6 +11,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import base64
 import logging
 import os
 import tempfile
@@ -152,6 +153,7 @@ def process():
         return jsonify({'error': 'PPTX 파일만 지원합니다.'}), 400
 
     slides_str = request.form.get('slides', '')
+    return_base64 = request.form.get('return_base64', '') == 'true'
 
     # 파일 저장
     file_id = str(uuid.uuid4())[:8]
@@ -223,6 +225,11 @@ def process():
                     'diagram_type': dd.diagram_type,
                     'node_count': dd.node_count,
                 })
+
+        # Office.js insertSlidesFromBase64 용 base64 응답
+        if return_base64:
+            with open(str(output_path), 'rb') as f:
+                result['base64'] = base64.b64encode(f.read()).decode('ascii')
 
         return jsonify(result)
 
