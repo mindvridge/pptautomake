@@ -4,12 +4,12 @@ chcp 65001 >nul 2>&1
 
 echo.
 echo ========================================================
-echo   PPT AutoMake - Plugin Setup
-echo   Adds "Diagram Convert" ribbon tab to PowerPoint
+echo   PPT AutoMake - 플러그인 설정
+echo   PowerPoint에 "도식 변환" 리본 탭 추가
 echo ========================================================
 echo.
 
-:: Detect Python - try 'py' (Python Launcher) first, then 'python'
+:: Python 감지 - 'py' (Python Launcher) 우선, 'python' 대체
 set "PY="
 py -c "import sys; sys.exit(0)" >nul 2>&1
 if !ERRORLEVEL! equ 0 (
@@ -22,25 +22,25 @@ if "!PY!"=="" (
     )
 )
 if "!PY!"=="" (
-    echo [ERROR] Python is not installed or not working.
+    echo [오류] Python이 설치되지 않았거나 정상 작동하지 않습니다.
     echo.
-    echo   Fix options:
-    echo     1. Install Python from https://www.python.org/downloads/
-    echo        IMPORTANT: Check "Add Python to PATH" during install.
+    echo   해결 방법:
+    echo     1. https://www.python.org/downloads/ 에서 Python 설치
+    echo        중요: 설치 시 "Add Python to PATH" 체크 필수!
     echo.
-    echo     2. If already installed, disable Microsoft Store alias:
-    echo        Settings - Apps - App execution aliases
-    echo        Turn OFF "python.exe" and "python3.exe"
+    echo     2. 이미 설치된 경우, Microsoft Store 앱 별칭 비활성화:
+    echo        설정 - 앱 - 앱 실행 별칭
+    echo        "python.exe" 와 "python3.exe" 끄기
     echo.
     pause
     exit /b 1
 )
-echo [INFO] Using: !PY!
+echo [정보] Python: !PY!
 
-:: Move to project directory
+:: 프로젝트 디렉토리로 이동
 cd /d "%~dp0"
 
-:: Run setup
+:: 설정 실행
 !PY! setup_plugin.py
 
 echo.

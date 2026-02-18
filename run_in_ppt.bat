@@ -4,11 +4,11 @@ chcp 65001 >nul 2>&1
 
 echo.
 echo ========================================
-echo   PPT AutoMake - Diagram Converter
+echo   PPT AutoMake - 도식 변환기
 echo ========================================
 echo.
 
-:: Detect Python - try 'py' (Python Launcher) first, then 'python'
+:: Python 감지 - 'py' (Python Launcher) 우선, 'python' 대체
 set "PY="
 py -c "import sys; sys.exit(0)" >nul 2>&1
 if !ERRORLEVEL! equ 0 (
@@ -21,32 +21,32 @@ if "!PY!"=="" (
     )
 )
 if "!PY!"=="" (
-    echo [ERROR] Python is not installed or not working.
+    echo [오류] Python이 설치되지 않았거나 정상 작동하지 않습니다.
     echo.
-    echo   Fix options:
-    echo     1. Install Python from https://www.python.org/downloads/
-    echo        IMPORTANT: Check "Add Python to PATH" during install.
+    echo   해결 방법:
+    echo     1. https://www.python.org/downloads/ 에서 Python 설치
+    echo        중요: 설치 시 "Add Python to PATH" 체크 필수!
     echo.
-    echo     2. If already installed, disable Microsoft Store alias:
-    echo        Settings - Apps - App execution aliases
-    echo        Turn OFF "python.exe" and "python3.exe"
+    echo     2. 이미 설치된 경우, Microsoft Store 앱 별칭 비활성화:
+    echo        설정 - 앱 - 앱 실행 별칭
+    echo        "python.exe" 와 "python3.exe" 끄기
     echo.
     pause
     exit /b 1
 )
-echo [INFO] Using: !PY!
+echo [정보] Python: !PY!
 
-:: Move to project directory
+:: 프로젝트 디렉토리로 이동
 cd /d "%~dp0"
 
-:: Check dependencies
+:: 의존성 확인
 !PY! -c "import pptx; import transformers" >nul 2>&1
 if !ERRORLEVEL! neq 0 (
-    echo [SETUP] Installing required packages...
+    echo [설치] 필수 패키지 설치 중...
     !PY! -m pip install -r requirements.txt
     if !ERRORLEVEL! neq 0 (
-        echo [ERROR] Package install failed.
-        echo         Try running: !PY! -m pip install -r requirements.txt
+        echo [오류] 패키지 설치 실패.
+        echo        직접 실행: !PY! -m pip install -r requirements.txt
         pause
         exit /b 1
     )
@@ -54,20 +54,20 @@ if !ERRORLEVEL! neq 0 (
 
 !PY! -c "import win32com.client" >nul 2>&1
 if !ERRORLEVEL! neq 0 (
-    echo [SETUP] Installing pywin32...
+    echo [설치] pywin32 설치 중...
     !PY! -m pip install pywin32
     if !ERRORLEVEL! neq 0 (
-        echo [ERROR] pywin32 install failed.
+        echo [오류] pywin32 설치 실패.
         pause
         exit /b 1
     )
 )
 
-echo [INFO] PowerPoint must be open with a presentation.
-echo        First run will download the vision model (~3.5GB).
+echo [정보] PowerPoint에서 프레젠테이션을 열어두세요.
+echo        첫 실행 시 비전 모델 다운로드 (~3.5GB).
 echo.
 
-:: Run
+:: 실행
 !PY! -m src.ppt_plugin %*
 
 echo.
