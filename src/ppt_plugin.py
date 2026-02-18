@@ -195,8 +195,12 @@ def run_pipeline(
 
     # Stage 3: 도식 상세 분석
     analysis_config = config.get('analysis', {})
-    backend = analysis_config.get('vision_backend', 'ollama')
-    if backend == 'ollama':
+    backend = analysis_config.get('vision_backend', 'local')
+    if backend == 'local':
+        model_name = analysis_config.get('local_model', 'vikhyatk/moondream2')
+        print(f'[3/4] 도식 상세 분석 중 (로컬 모델: {model_name})...')
+        print(f'      (최초 실행 시 모델 자동 다운로드, 이후 캐시 사용)')
+    elif backend == 'ollama':
         model_name = analysis_config.get('ollama_model', 'llama3.2-vision')
         print(f'[3/4] 도식 상세 분석 중 (Ollama: {model_name})...')
         _check_ollama_ready(analysis_config)

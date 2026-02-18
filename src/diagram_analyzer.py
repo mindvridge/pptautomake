@@ -1,11 +1,12 @@
 """Module 3: DiagramAnalyzer - 도식 상세 분석 (Vision AI 연동)
 
-도식으로 분류된 이미지는 Vision API(Anthropic 또는 Ollama)로,
+도식으로 분류된 이미지는 Vision API로,
 그룹 도형은 XML 구조 분석으로 상세 구조를 파악한다.
 
 지원 백엔드:
+  - local: 로컬 비전 모델 직접 로드 (서버/API 키 불필요, pip만으로 완결)
+  - ollama: Ollama 로컬 서버 경유 (ollama 별도 설치 필요)
   - anthropic: Claude Vision API (ANTHROPIC_API_KEY 필요)
-  - ollama: 로컬 오픈소스 비전 모델 (API 키 불필요, ollama 설치 필요)
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ from src.utils.xml_utils import (
 
 logger = logging.getLogger(__name__)
 
-# Claude Vision API에 보낼 프롬프트
+# Vision 모델에 보낼 프롬프트
 VISION_ANALYSIS_PROMPT = """이 이미지는 PowerPoint 프레젠테이션의 도식/다이어그램입니다.
 이 도식을 PowerPoint 네이티브 요소로 재구성하기 위해 다음을 분석해주세요:
 
@@ -92,14 +93,17 @@ class DiagramAnalyzer:
 
     def __init__(self, config: dict | None = None):
         self.config = config or {}
-        self.vision_backend = self.config.get('vision_backend', 'ollama')
+        self.vision_backend = self.config.get('vision_backend', 'local')
         self.vision_model = self.config.get('vision_model', 'claude-sonnet-4-20250514')
         self.ollama_model = self.config.get('ollama_model', 'llama3.2-vision')
         self.ollama_base_url = self.config.get('ollama_base_url', 'http://localhost:11434')
+        self.local_model = self.config.get('local_model', 'vikhyatk/moondream2')
         self.api_timeout = self.config.get('api_timeout', self.API_TIMEOUT)
         self.max_retries = self.config.get('max_retries', self.MAX_RETRIES)
         self._anthropic_client = None
         self._ollama_client = None
+        self._local_model = None
+        self._local_tokenizer = None
 
     @property
     def anthropic_client(self):
@@ -112,6 +116,39 @@ class DiagramAnalyzer:
                 logger.error("Anthropic 클라이언트 초기화 실패: %s", e)
                 raise
         return self._anthropic_client
+
+    def _load_local_model(self):
+        """로컬 비전 모델을 메모리에 로드한다 (최초 1회, 이후 재사용)."""
+        if self._local_model is not None:
+            return
+
+        model_id = self.local_model
+        logger.info("로컬 비전 모델 로드 중: %s (최초 실행 시 다운로드)", model_id)
+
+        try:
+            import torch
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+        except ImportError:
+            logger.error(
+                "transformers/torch 패키지가 없습니다. "
+                "'pip install transformers torch torchvision' 실행 후 다시 시도하세요."
+            )
+            raise
+
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        dtype = torch.float16 if device == 'cuda' else torch.float32
+
+        self._local_tokenizer = AutoTokenizer.from_pretrained(
+            model_id, trust_remote_code=True,
+        )
+        self._local_model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            trust_remote_code=True,
+            torch_dtype=dtype,
+            device_map={'': device},
+        )
+        self._local_device = device
+        logger.info("로컬 비전 모델 로드 완료 (device: %s)", device)
 
     @property
     def ollama_client(self):
@@ -160,7 +197,9 @@ class DiagramAnalyzer:
         if content_type not in ('image/png', 'image/jpeg', 'image/gif', 'image/webp'):
             image_blob, content_type = self._convert_image(image_blob, content_type)
 
-        if self.vision_backend == 'ollama':
+        if self.vision_backend == 'local':
+            return self._call_local_vision(image_blob, content_type)
+        elif self.vision_backend == 'ollama':
             return self._call_ollama_vision(image_blob, content_type)
         else:
             return self._call_anthropic_vision(image_blob, content_type)
@@ -272,6 +311,82 @@ class DiagramAnalyzer:
                     )
 
         return DiagramData(diagram_type="unknown")
+
+    def _call_local_vision(
+        self, image_blob: bytes, content_type: str
+    ) -> DiagramData:
+        """로컬 비전 모델(transformers)로 도식을 분석한다 (서버/API 키 불필요)."""
+        import io
+        from PIL import Image
+
+        self._load_local_model()
+
+        image = Image.open(io.BytesIO(image_blob)).convert('RGB')
+
+        for attempt in range(self.max_retries):
+            try:
+                # moondream2 API: model.answer_question()
+                if hasattr(self._local_model, 'answer_question'):
+                    enc_image = self._local_model.encode_image(image)
+                    response_text = self._local_model.answer_question(
+                        enc_image, VISION_ANALYSIS_PROMPT, self._local_tokenizer,
+                    )
+                else:
+                    # 일반 VLM fallback (generate 기반)
+                    response_text = self._generate_with_vlm(image)
+
+                diagram_json = self._parse_json_response(response_text)
+
+                if not diagram_json:
+                    logger.warning(
+                        "로컬 모델 응답 JSON 파싱 실패 (시도 %d/%d): 빈 결과",
+                        attempt + 1, self.max_retries,
+                    )
+                    return DiagramData(diagram_type="unknown")
+
+                return self._json_to_diagram_data(diagram_json)
+
+            except Exception as e:
+                if attempt < self.max_retries - 1:
+                    delay = self.RETRY_DELAYS[min(attempt, len(self.RETRY_DELAYS) - 1)]
+                    logger.warning(
+                        "로컬 모델 추론 실패 (시도 %d/%d): %s - %d초 후 재시도",
+                        attempt + 1, self.max_retries, e, delay,
+                    )
+                    time.sleep(delay)
+                else:
+                    logger.error(
+                        "로컬 모델 분석 실패 (%d회 시도 후 포기): %s",
+                        self.max_retries, e,
+                    )
+
+        return DiagramData(diagram_type="unknown")
+
+    def _generate_with_vlm(self, image) -> str:
+        """일반 VLM 모델의 generate 방식으로 추론한다 (fallback)."""
+        from transformers import AutoProcessor
+        import torch
+
+        model_id = self.local_model
+        processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
+
+        inputs = processor(
+            text=VISION_ANALYSIS_PROMPT,
+            images=image,
+            return_tensors="pt",
+        ).to(self._local_device)
+
+        with torch.no_grad():
+            output_ids = self._local_model.generate(
+                **inputs,
+                max_new_tokens=4096,
+                temperature=0.1,
+                do_sample=True,
+            )
+
+        # 입력 토큰 이후만 디코딩
+        input_len = inputs['input_ids'].shape[1]
+        return processor.decode(output_ids[0][input_len:], skip_special_tokens=True)
 
     def _convert_image(self, image_blob: bytes, content_type: str) -> tuple[bytes, str]:
         """지원하지 않는 이미지 형식을 PNG로 변환한다."""

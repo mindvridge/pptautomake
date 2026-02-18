@@ -1,9 +1,17 @@
 python-pptx>=0.6.23
 Pillow>=10.0.0
-anthropic>=0.40.0
-ollama>=0.4.0
 lxml>=5.0.0
 PyYAML>=6.0
+# Vision 백엔드 (local - 기본, 서버 불필요)
+transformers>=4.45.0
+torch>=2.1.0
+torchvision>=0.16.0
+einops>=0.7.0
+# Vision 백엔드 (ollama - 선택)
+ollama>=0.4.0
+# Vision 백엔드 (anthropic - 선택)
+anthropic>=0.40.0
+# 웹 서버 (선택)
 flask>=3.0.0
 flask-cors>=4.0.0
 pyOpenSSL>=23.0.0
