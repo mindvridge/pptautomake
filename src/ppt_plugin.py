@@ -33,6 +33,52 @@ def _check_win32com():
         return False
 
 
+def _check_ollama_ready(analysis_config: dict) -> bool:
+    """Ollama 서버 상태 확인 및 비전 모델 자동 다운로드를 수행한다."""
+    model_name = analysis_config.get('ollama_model', 'llama3.2-vision')
+    base_url = analysis_config.get('ollama_base_url', 'http://localhost:11434')
+
+    try:
+        import ollama
+    except ImportError:
+        print('[오류] ollama 패키지가 설치되지 않았습니다.')
+        print('       pip install ollama')
+        return False
+
+    # 1) 서버 연결 확인
+    try:
+        client = ollama.Client(host=base_url)
+        models = client.list()
+    except Exception:
+        print(f'[오류] Ollama 서버에 연결할 수 없습니다 ({base_url})')
+        print('       Ollama를 먼저 실행해주세요: https://ollama.com')
+        return False
+
+    # 2) 모델 존재 여부 확인
+    model_names = [m.model for m in models.models] if models.models else []
+    # "llama3.2-vision:latest" 등 태그 포함 비교
+    found = any(
+        m == model_name or m.startswith(f'{model_name}:')
+        for m in model_names
+    )
+
+    if found:
+        print(f'  -> 비전 모델 확인: {model_name}')
+        return True
+
+    # 3) 모델 자동 다운로드
+    print(f'  -> 비전 모델 ({model_name})이 없습니다. 자동 다운로드 중...')
+    print(f'     (최초 1회만 필요, 수 분 소요될 수 있습니다)')
+    try:
+        client.pull(model_name)
+        print(f'  -> 다운로드 완료: {model_name}')
+        return True
+    except Exception as e:
+        print(f'[오류] 모델 다운로드 실패: {e}')
+        print(f'       수동으로 실행: ollama pull {model_name}')
+        return False
+
+
 def get_powerpoint_app():
     """실행 중인 PowerPoint 인스턴스에 연결한다."""
     import win32com.client
@@ -148,8 +194,15 @@ def run_pipeline(
         return None, summary
 
     # Stage 3: 도식 상세 분석
-    print('[3/4] 도식 상세 분석 중 (Claude Vision API)...')
-    diagram_analyzer = DiagramAnalyzer(config.get('analysis', {}))
+    analysis_config = config.get('analysis', {})
+    backend = analysis_config.get('vision_backend', 'ollama')
+    if backend == 'ollama':
+        model_name = analysis_config.get('ollama_model', 'llama3.2-vision')
+        print(f'[3/4] 도식 상세 분석 중 (Ollama: {model_name})...')
+        _check_ollama_ready(analysis_config)
+    else:
+        print('[3/4] 도식 상세 분석 중 (Anthropic API)...')
+    diagram_analyzer = DiagramAnalyzer(analysis_config)
     diagram_results = {}
 
     total_diagrams = sum(
