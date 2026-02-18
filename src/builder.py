@@ -182,6 +182,14 @@ class NativePPTXBuilder:
 
         rows = len(table_data)
         cols = len(table_data[0])
+
+        # 열 수 불일치 보정: 모든 행을 cols 길이에 맞춤
+        for i, row in enumerate(table_data):
+            if len(row) < cols:
+                table_data[i] = list(row) + [''] * (cols - len(row))
+            elif len(row) > cols:
+                table_data[i] = list(row)[:cols]
+
         table_width = self.slide_width - 2 * self.margin
         table_height = Inches(min(rows * 0.6, 5.0))
         top = Inches(1.8)

@@ -514,13 +514,16 @@ class DiagramAnalyzer:
 
     def _generate_with_vlm(self, image) -> str:
         """일반 VLM 모델의 generate 방식으로 추론한다 (fallback)."""
-        from transformers import AutoProcessor
         import torch
 
-        model_id = self.local_model
-        processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
+        # processor가 아직 로드되지 않은 경우만 로드 (캐시)
+        if self._local_processor is None:
+            from transformers import AutoProcessor
+            self._local_processor = AutoProcessor.from_pretrained(
+                self.local_model, trust_remote_code=True,
+            )
 
-        inputs = processor(
+        inputs = self._local_processor(
             text=VISION_ANALYSIS_PROMPT,
             images=image,
             return_tensors="pt",
@@ -536,7 +539,9 @@ class DiagramAnalyzer:
 
         # 입력 토큰 이후만 디코딩
         input_len = inputs['input_ids'].shape[1]
-        return processor.decode(output_ids[0][input_len:], skip_special_tokens=True)
+        return self._local_processor.decode(
+            output_ids[0][input_len:], skip_special_tokens=True,
+        )
 
     def _convert_image(self, image_blob: bytes, content_type: str) -> tuple[bytes, str]:
         """지원하지 않는 이미지 형식을 PNG로 변환한다."""

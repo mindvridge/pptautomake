@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import copy
 import logging
 from pathlib import Path
 
@@ -19,7 +18,7 @@ from src.classifier import (
     ClassifiedElement,
     ContentType,
 )
-from src.diagram_analyzer import DiagramData, DiagramAnalyzer
+from src.diagram_analyzer import DiagramData
 from src.builder import NativePPTXBuilder
 
 logger = logging.getLogger(__name__)
@@ -103,7 +102,11 @@ class SlideComposer:
                 prs, slide_idx, diagram_pairs, builder, analyses
             )
 
-        prs.save(output_path)
+        try:
+            prs.save(output_path)
+        except Exception as e:
+            logger.error("출력 파일 저장 실패: %s - %s", output_path, e)
+            raise
         logger.info("출력 파일 저장 완료: %s", output_path)
         return output_path
 
@@ -186,7 +189,6 @@ class SlideComposer:
     def _move_slide(self, prs: Presentation, from_idx: int, to_idx: int) -> None:
         """슬라이드를 from_idx에서 to_idx로 이동한다."""
         try:
-            from lxml import etree
             slides_list = prs.slides._sldIdLst
 
             slide_ids = list(slides_list)

@@ -15,6 +15,7 @@ import base64
 import logging
 import os
 import tempfile
+import time
 import uuid
 from pathlib import Path
 
@@ -44,6 +45,22 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 
+_CLEANUP_MAX_AGE = 3600  # 1시간 이상 된 임시 파일 삭제
+
+
+def _cleanup_old_files():
+    """1시간 이상 지난 임시 파일을 삭제한다."""
+    now = time.time()
+    for directory in (UPLOAD_DIR, OUTPUT_DIR):
+        try:
+            for f in directory.iterdir():
+                if f.is_file() and (now - f.stat().st_mtime) > _CLEANUP_MAX_AGE:
+                    f.unlink(missing_ok=True)
+                    logger.debug("임시 파일 삭제: %s", f)
+        except Exception as e:
+            logger.debug("임시 파일 정리 실패: %s", e)
+
+
 def _load_config() -> dict:
     """config.yaml 로드"""
     config_path = Path(__file__).parent.parent / 'config.yaml'
@@ -69,6 +86,8 @@ def health():
 @app.route('/api/analyze', methods=['POST'])
 def analyze():
     """PPTX 파일을 분석하여 슬라이드별 도식 정보를 반환한다."""
+    _cleanup_old_files()
+
     if 'file' not in request.files:
         return jsonify({'error': '파일이 첨부되지 않았습니다.'}), 400
 
@@ -145,6 +164,8 @@ def analyze():
 @app.route('/api/process', methods=['POST'])
 def process():
     """전체 파이프라인을 실행한다 (분석 + 변환)."""
+    _cleanup_old_files()
+
     if 'file' not in request.files:
         return jsonify({'error': '파일이 첨부되지 않았습니다.'}), 400
 
@@ -241,7 +262,16 @@ def process():
 @app.route('/api/download/<filename>', methods=['GET'])
 def download(filename: str):
     """변환된 PPTX 파일을 다운로드한다."""
-    file_path = OUTPUT_DIR / filename
+    # Path traversal 방지: 파일명에서 디렉토리 구분자 제거
+    safe_filename = Path(filename).name
+    if not safe_filename or safe_filename != filename:
+        return jsonify({'error': '잘못된 파일명입니다.'}), 400
+
+    file_path = OUTPUT_DIR / safe_filename
+    # OUTPUT_DIR 바깥 경로 접근 차단
+    if not file_path.resolve().is_relative_to(OUTPUT_DIR.resolve()):
+        return jsonify({'error': '잘못된 파일 경로입니다.'}), 400
+
     if not file_path.exists():
         return jsonify({'error': '파일을 찾을 수 없습니다.'}), 404
 
@@ -249,7 +279,7 @@ def download(filename: str):
         str(file_path),
         mimetype='application/vnd.openxmlformats-officedocument.presentationml.presentation',
         as_attachment=True,
-        download_name=filename,
+        download_name=safe_filename,
     )
 
 
@@ -265,4 +295,6 @@ def create_app() -> Flask:
 if __name__ == '__main__':
     create_app()
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=True, ssl_context='adhoc')
+    print(f'PPT AutoMake API 서버: http://localhost:{port}')
+    print('HTTPS가 필요하면 run_server.py를 사용하세요.')
+    app.run(host='0.0.0.0', port=port, debug=True)

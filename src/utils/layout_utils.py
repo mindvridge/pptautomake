@@ -33,7 +33,7 @@ def calculate_even_spacing(
 
     available = total_width - 2 * margin
     total_gaps = (item_count - 1) * gap if item_count > 1 else 0
-    item_width = (available - total_gaps) // item_count
+    item_width = round((available - total_gaps) / item_count)
 
     positions = []
     for i in range(item_count):
@@ -69,8 +69,8 @@ def calculate_grid_positions(
 
     avail_w = slide_width - 2 * margin
     avail_h = slide_height - title_height - margin
-    cell_w = (avail_w - (cols - 1) * gap) // cols
-    cell_h = (avail_h - (rows - 1) * gap) // rows
+    cell_w = round((avail_w - (cols - 1) * gap) / cols)
+    cell_h = round((avail_h - (rows - 1) * gap) / rows)
 
     grid = []
     for r in range(rows):
