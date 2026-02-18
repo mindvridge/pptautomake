@@ -97,7 +97,7 @@ class DiagramAnalyzer:
         self.vision_model = self.config.get('vision_model', 'claude-sonnet-4-20250514')
         self.ollama_model = self.config.get('ollama_model', 'llama3.2-vision')
         self.ollama_base_url = self.config.get('ollama_base_url', 'http://localhost:11434')
-        self.local_model = self.config.get('local_model', 'vikhyatk/moondream2')
+        self.local_model = self.config.get('local_model', 'Qwen/Qwen2.5-VL-7B-Instruct')
         self.api_timeout = self.config.get('api_timeout', self.API_TIMEOUT)
         self.max_retries = self.config.get('max_retries', self.MAX_RETRIES)
         self._anthropic_client = None
@@ -117,6 +117,10 @@ class DiagramAnalyzer:
                 raise
         return self._anthropic_client
 
+    def _is_qwen_vl(self) -> bool:
+        """현재 모델이 Qwen2.5-VL 계열인지 확인한다."""
+        return 'qwen' in self.local_model.lower() and 'vl' in self.local_model.lower()
+
     def _load_local_model(self):
         """로컬 비전 모델을 메모리에 로드한다 (최초 1회, 이후 재사용)."""
         if self._local_model is not None:
@@ -127,16 +131,50 @@ class DiagramAnalyzer:
 
         try:
             import torch
-            from transformers import AutoModelForCausalLM, AutoTokenizer
         except ImportError:
             logger.error(
-                "transformers/torch 패키지가 없습니다. "
-                "'pip install transformers torch torchvision' 실행 후 다시 시도하세요."
+                "torch 패키지가 없습니다. "
+                "'pip install torch torchvision' 실행 후 다시 시도하세요."
             )
             raise
 
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         dtype = torch.float16 if device == 'cuda' else torch.float32
+
+        if self._is_qwen_vl():
+            self._load_qwen_vl(model_id, device, dtype)
+        else:
+            self._load_generic_vlm(model_id, device, dtype)
+
+        self._local_device = device
+        logger.info("로컬 비전 모델 로드 완료 (device: %s)", device)
+
+    def _load_qwen_vl(self, model_id: str, device: str, dtype):
+        """Qwen2.5-VL 모델을 로드한다."""
+        import torch
+        try:
+            from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
+        except ImportError:
+            logger.error(
+                "transformers>=4.45.0이 필요합니다. "
+                "'pip install -U transformers qwen-vl-utils' 실행 후 다시 시도하세요."
+            )
+            raise
+
+        self._local_processor = AutoProcessor.from_pretrained(
+            model_id, trust_remote_code=True,
+        )
+        self._local_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+            model_id,
+            trust_remote_code=True,
+            torch_dtype=dtype,
+            device_map="auto" if device == 'cuda' else {'': device},
+        )
+        self._local_tokenizer = None  # Qwen-VL은 processor 사용
+
+    def _load_generic_vlm(self, model_id: str, device: str, dtype):
+        """Moondream2 등 범용 VLM 모델을 로드한다."""
+        from transformers import AutoModelForCausalLM, AutoTokenizer
 
         self._local_tokenizer = AutoTokenizer.from_pretrained(
             model_id, trust_remote_code=True,
@@ -147,8 +185,7 @@ class DiagramAnalyzer:
             torch_dtype=dtype,
             device_map={'': device},
         )
-        self._local_device = device
-        logger.info("로컬 비전 모델 로드 완료 (device: %s)", device)
+        self._local_processor = None
 
     @property
     def ollama_client(self):
@@ -325,8 +362,10 @@ class DiagramAnalyzer:
 
         for attempt in range(self.max_retries):
             try:
-                # moondream2 API: model.answer_question()
-                if hasattr(self._local_model, 'answer_question'):
+                if self._is_qwen_vl():
+                    response_text = self._generate_with_qwen_vl(image)
+                elif hasattr(self._local_model, 'answer_question'):
+                    # moondream2 API: model.answer_question()
                     enc_image = self._local_model.encode_image(image)
                     response_text = self._local_model.answer_question(
                         enc_image, VISION_ANALYSIS_PROMPT, self._local_tokenizer,
@@ -361,6 +400,44 @@ class DiagramAnalyzer:
                     )
 
         return DiagramData(diagram_type="unknown")
+
+    def _generate_with_qwen_vl(self, image) -> str:
+        """Qwen2.5-VL 모델로 도식을 분석한다."""
+        import torch
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": image},
+                    {"type": "text", "text": VISION_ANALYSIS_PROMPT},
+                ],
+            }
+        ]
+
+        text_input = self._local_processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True,
+        )
+        inputs = self._local_processor(
+            text=[text_input],
+            images=[image],
+            padding=True,
+            return_tensors="pt",
+        ).to(self._local_model.device)
+
+        with torch.no_grad():
+            output_ids = self._local_model.generate(
+                **inputs,
+                max_new_tokens=4096,
+                temperature=0.1,
+                do_sample=True,
+            )
+
+        # 입력 토큰 이후만 디코딩
+        input_len = inputs['input_ids'].shape[1]
+        return self._local_processor.decode(
+            output_ids[0][input_len:], skip_special_tokens=True,
+        )
 
     def _generate_with_vlm(self, image) -> str:
         """일반 VLM 모델의 generate 방식으로 추론한다 (fallback)."""

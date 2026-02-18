@@ -1,7 +1,7 @@
 analysis:
   min_diagram_area_ratio: 0.25    # 이미지를 도식으로 판별하는 최소 슬라이드 면적 비율
   vision_backend: local            # local (서버 불필요) / ollama / anthropic
-  local_model: vikhyatk/moondream2 # local 백엔드 모델 (HuggingFace 모델 ID)
+  local_model: Qwen/Qwen2.5-VL-7B-Instruct  # local 백엔드 모델 (HuggingFace 모델 ID)
   vision_model: claude-sonnet-4-20250514  # Anthropic 사용 시 모델명
   ollama_model: llama3.2-vision    # Ollama 사용 시 비전 모델명
   ollama_base_url: http://localhost:11434  # Ollama 서버 주소

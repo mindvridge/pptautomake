@@ -197,7 +197,7 @@ def run_pipeline(
     analysis_config = config.get('analysis', {})
     backend = analysis_config.get('vision_backend', 'local')
     if backend == 'local':
-        model_name = analysis_config.get('local_model', 'vikhyatk/moondream2')
+        model_name = analysis_config.get('local_model', 'Qwen/Qwen2.5-VL-7B-Instruct')
         print(f'[3/4] 도식 상세 분석 중 (로컬 모델: {model_name})...')
         print(f'      (최초 실행 시 모델 자동 다운로드, 이후 캐시 사용)')
     elif backend == 'ollama':
