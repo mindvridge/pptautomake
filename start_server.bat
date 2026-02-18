@@ -27,7 +27,7 @@ echo [1/3] Checking dependencies...
 python -c "import flask; import flask_cors; import pptx" >nul 2>&1
 if !ERRORLEVEL! neq 0 (
     echo       Installing packages...
-    pip install -r requirements.txt --quiet
+    python -m pip install -r requirements.txt --quiet
     if !ERRORLEVEL! neq 0 (
         echo [ERROR] Package install failed.
         pause

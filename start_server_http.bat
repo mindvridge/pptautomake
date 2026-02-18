@@ -23,7 +23,7 @@ cd /d "%~dp0"
 python -c "import flask; import flask_cors; import pptx" >nul 2>&1
 if !ERRORLEVEL! neq 0 (
     echo Installing packages...
-    pip install -r requirements.txt --quiet
+    python -m pip install -r requirements.txt --quiet
 )
 
 echo.

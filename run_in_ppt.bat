@@ -24,13 +24,13 @@ cd /d "%~dp0"
 python -c "import pptx; import transformers" >nul 2>&1
 if !ERRORLEVEL! neq 0 (
     echo [SETUP] Installing required packages...
-    pip install -r requirements.txt --quiet
+    python -m pip install -r requirements.txt --quiet
 )
 
 python -c "import win32com.client" >nul 2>&1
 if !ERRORLEVEL! neq 0 (
     echo [SETUP] Installing pywin32...
-    pip install pywin32 --quiet
+    python -m pip install pywin32 --quiet
 )
 
 echo [INFO] PowerPoint must be open with a presentation.
