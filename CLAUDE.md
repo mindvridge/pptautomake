@@ -6,8 +6,10 @@ PowerPoint 도식화 재구성 플러그인. PPTX 파일 내 이미지 도식(�
 
 ## 기술 스택
 
-- **언어**: Python 3.10+
+- **언어**: Python 3.10+, HTML/CSS/JavaScript
 - **핵심 라이브러리**: python-pptx, Pillow, anthropic (Claude Vision API), lxml, PyYAML
+- **웹 서버**: Flask, Flask-CORS
+- **프론트엔드**: Office.js (Office Add-in SDK)
 - **테스트**: pytest
 
 ## 프로젝트 구조
@@ -21,6 +23,7 @@ pptautomake/
 │   ├── builder.py           # Module 4: NativePPTXBuilder - 네이티브 PPTX 요소 생성 (핵심)
 │   ├── composer.py          # Module 5: SlideComposer - 슬라이드 조합 및 출력
 │   ├── main.py              # CLI 진입점
+│   ├── api.py               # Flask 웹 API 서버 (Add-in 백엔드)
 │   └── utils/
 │       ├── color_utils.py   # HEX/RGB 변환, 대비색 계산
 │       ├── layout_utils.py  # 그리드, 원형, 선형 배치 계산
@@ -30,8 +33,15 @@ pptautomake/
 │   ├── test_classifier.py
 │   ├── test_builder.py
 │   └── fixtures/            # 테스트용 PPTX 샘플 (미구성)
+├── addin/
+│   ├── manifest.xml         # Office Add-in 매니페스트
+│   ├── taskpane.html        # Task Pane HTML
+│   └── static/
+│       ├── taskpane.css     # Task Pane 스타일
+│       └── taskpane.js      # Task Pane 클라이언트 JS
 ├── docs/
 ├── config.yaml              # 분석/빌더/출력 설정
+├── run_server.py            # Add-in 백엔드 서버 실행
 ├── requirements.txt
 └── pptx-plugin-prompt.docx  # 기획 문서
 ```
@@ -63,7 +73,25 @@ python -m src.main input.pptx --dry-run
 
 # 상세 로그
 python -m src.main input.pptx -v
+
+# Office Add-in 서버 실행 (HTTPS)
+python run_server.py
+
+# HTTP로 실행 (개발용)
+python run_server.py --no-ssl
+
+# 포트 변경
+python run_server.py --port 8443
 ```
+
+## Office Add-in 설정
+
+PowerPoint에서 플러그인으로 사용하려면:
+
+1. `python run_server.py`로 서버 시작
+2. PowerPoint → 삽입 → 내 추가 기능 → 사용자 지정 추가 기능 업로드
+3. `addin/manifest.xml` 선택
+4. 리본 메뉴 홈 탭에 "도식 변환" 버튼 표시됨
 
 ## 테스트
 

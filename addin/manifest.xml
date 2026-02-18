@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<OfficeApp
+  xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+  xsi:type="TaskPaneApp">
+
+  <!-- Add-in 기본 정보 -->
+  <Id>a1b2c3d4-e5f6-7890-abcd-ef1234567890</Id>
+  <Version>1.0.0</Version>
+  <ProviderName>PPT AutoMake</ProviderName>
+  <DefaultLocale>ko-KR</DefaultLocale>
+  <DisplayName DefaultValue="PPT 도식 자동변환"/>
+  <Description DefaultValue="이미지 도식을 네이티브 PowerPoint 요소(도형, 표, 차트)로 자동 변환합니다."/>
+  <IconUrl DefaultValue="https://localhost:5000/static/icon-32.png"/>
+  <HighResolutionIconUrl DefaultValue="https://localhost:5000/static/icon-64.png"/>
+  <SupportUrl DefaultValue="https://github.com/pptautomake"/>
+
+  <!-- 호스트 앱: PowerPoint -->
+  <Hosts>
+    <Host Name="Presentation"/>
+  </Hosts>
+
+  <!-- 권한 -->
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://localhost:5000/"/>
+  </DefaultSettings>
+  <Permissions>ReadWriteDocument</Permissions>
+
+  <!-- 리본 UI 연동 -->
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Presentation">
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="GetStarted.Title"/>
+            <Description resid="GetStarted.Description"/>
+            <LearnMoreUrl resid="GetStarted.LearnMoreUrl"/>
+          </GetStarted>
+
+          <!-- 리본 탭에 버튼 추가 -->
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="PPTAutoMakeGroup">
+                <Label resid="Group.Label"/>
+                <Icon>
+                  <bt:Image size="16" resid="Icon.16x16"/>
+                  <bt:Image size="32" resid="Icon.32x32"/>
+                  <bt:Image size="80" resid="Icon.80x80"/>
+                </Icon>
+
+                <!-- 메인 버튼: Task Pane 열기 -->
+                <Control xsi:type="Button" id="TaskpaneButton">
+                  <Label resid="TaskpaneButton.Label"/>
+                  <Supertip>
+                    <Title resid="TaskpaneButton.Label"/>
+                    <Description resid="TaskpaneButton.Tooltip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16x16"/>
+                    <bt:Image size="32" resid="Icon.32x32"/>
+                    <bt:Image size="80" resid="Icon.80x80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>PPTAutoMakePane</TaskpaneId>
+                    <SourceLocation resid="Taskpane.Url"/>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+
+    <!-- 리소스 -->
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Icon.16x16" DefaultValue="https://localhost:5000/static/icon-16.png"/>
+        <bt:Image id="Icon.32x32" DefaultValue="https://localhost:5000/static/icon-32.png"/>
+        <bt:Image id="Icon.80x80" DefaultValue="https://localhost:5000/static/icon-80.png"/>
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://localhost:5000/"/>
+        <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://localhost:5000/"/>
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="GetStarted.Title" DefaultValue="PPT 도식 자동변환 시작"/>
+        <bt:String id="Group.Label" DefaultValue="도식 자동변환"/>
+        <bt:String id="TaskpaneButton.Label" DefaultValue="도식 변환"/>
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="GetStarted.Description" DefaultValue="이미지 도식을 네이티브 PowerPoint 요소로 자동 변환합니다. 리본 메뉴의 '도식 변환' 버튼을 클릭하세요."/>
+        <bt:String id="TaskpaneButton.Tooltip" DefaultValue="Task Pane을 열어 현재 프레젠테이션의 이미지 도식을 분석하고 네이티브 요소로 변환합니다."/>
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>

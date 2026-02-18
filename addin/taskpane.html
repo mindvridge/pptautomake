@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PPT 도식 자동변환</title>
+  <link rel="stylesheet" href="/static/taskpane.css">
+  <script src="https://appsforoffice.microsoft.com/lib/1.1/hosted/office.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- 헤더 -->
+    <header class="header">
+      <h1>PPT 도식 자동변환</h1>
+      <p class="subtitle">이미지 도식 → 네이티브 요소</p>
+    </header>
+
+    <!-- 연결 상태 -->
+    <div id="connection-status" class="status-bar status-checking">
+      <span class="status-dot"></span>
+      <span class="status-text">서버 연결 확인 중...</span>
+    </div>
+
+    <!-- 파일 업로드 -->
+    <section class="section">
+      <h2>1. 파일 선택</h2>
+      <div class="upload-area" id="upload-area">
+        <input type="file" id="file-input" accept=".pptx" hidden>
+        <div class="upload-content" id="upload-content">
+          <div class="upload-icon">📂</div>
+          <p>PPTX 파일을 드래그하거나<br>클릭하여 선택하세요</p>
+        </div>
+        <div class="file-info" id="file-info" hidden>
+          <span class="file-name" id="file-name"></span>
+          <button class="btn-clear" id="btn-clear" title="파일 제거">✕</button>
+        </div>
+      </div>
+      <div class="ppt-notice" id="ppt-notice" hidden>
+        <p>또는 현재 열린 PPT 파일을 사용합니다.</p>
+      </div>
+    </section>
+
+    <!-- 옵션 -->
+    <section class="section">
+      <h2>2. 옵션</h2>
+      <div class="option-group">
+        <label for="slides-input">슬라이드 번호 (선택)</label>
+        <input type="text" id="slides-input" placeholder="예: 1,3,5-8 (비우면 전체)">
+      </div>
+    </section>
+
+    <!-- 실행 버튼 -->
+    <section class="section actions">
+      <button class="btn btn-secondary" id="btn-analyze" disabled>
+        <span class="btn-icon">🔍</span> 분석만
+      </button>
+      <button class="btn btn-primary" id="btn-process" disabled>
+        <span class="btn-icon">⚡</span> 분석 + 변환
+      </button>
+    </section>
+
+    <!-- 진행 상태 -->
+    <section class="section" id="progress-section" hidden>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+      <p class="progress-text" id="progress-text">처리 중...</p>
+    </section>
+
+    <!-- 결과 -->
+    <section class="section" id="result-section" hidden>
+      <h2>결과</h2>
+      <div id="result-content"></div>
+    </section>
+  </div>
+
+  <script src="/static/taskpane.js"></script>
+</body>
+</html>
