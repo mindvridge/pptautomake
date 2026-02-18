@@ -2,23 +2,43 @@ Attribute VB_Name = "PPTAutoMake"
 '===============================================================
 ' PPT AutoMake - PowerPoint VBA 매크로
 '
-' 이 매크로를 PowerPoint에 추가하면 리본 메뉴에
-' "도식 변환" 버튼이 생성됩니다.
+' 이미지 도식을 네이티브 PowerPoint 요소로 자동 변환합니다.
 '
-' 설치 방법:
+' 설치 방법 (자동):
+'   setup_plugin.bat 더블클릭 → 자동으로 리본 탭 추가
+'
+' 설치 방법 (수동):
 '   1. PowerPoint에서 Alt+F11 (VBA 편집기)
-'   2. 삽입 -> 모듈
+'   2. 삽입 → 모듈
 '   3. 이 파일의 내용을 붙여넣기
-'   4. 저장 후 VBA 편집기 닫기
-'   5. 빠른 실행 도구 모음에 매크로 추가 (선택)
-'
-' 또는 install_macro.bat 실행
+'   4. Alt+F8 → PPTAutoMake_Run 실행
 '===============================================================
 
 Option Explicit
 
-' Python 실행 경로 (환경에 맞게 수정)
+' Python 실행 경로 (환경에 맞게 수정 가능)
 Private Const PYTHON_EXE As String = "python"
+
+'===============================================================
+' 리본 콜백 함수 (customUI14.xml에서 호출)
+' .ppam 애드인 설치 시 리본 탭 버튼이 이 함수를 호출한다
+'===============================================================
+
+Public Sub Ribbon_Run(control As IRibbonControl)
+    PPTAutoMake_Run
+End Sub
+
+Public Sub Ribbon_Analyze(control As IRibbonControl)
+    PPTAutoMake_Analyze
+End Sub
+
+Public Sub Ribbon_SelectedSlides(control As IRibbonControl)
+    PPTAutoMake_SelectedSlides
+End Sub
+
+'===============================================================
+' 매크로 직접 실행 함수 (Alt+F8 또는 리본 콜백에서 호출)
+'===============================================================
 
 '---------------------------------------------------------------
 ' 전체 파이프라인 실행 (분석 + 변환 + 삽입)
@@ -29,7 +49,7 @@ Public Sub PPTAutoMake_Run()
 
     If projectPath = "" Then
         MsgBox "PPT AutoMake 프로젝트 경로를 찾을 수 없습니다." & vbCrLf & _
-               "install_macro.bat를 먼저 실행해주세요.", _
+               "setup_plugin.bat를 먼저 실행해주세요.", _
                vbExclamation, "PPT 도식 자동변환"
         Exit Sub
     End If
@@ -75,18 +95,26 @@ Public Sub PPTAutoMake_SelectedSlides()
         Exit Sub
     End If
 
+    ' 현재 선택된 슬라이드 번호 자동 감지
+    Dim defaultSlides As String
+    defaultSlides = GetSelectedSlideNumbers()
+
     Dim slidesStr As String
     slidesStr = InputBox("처리할 슬라이드 번호를 입력하세요:" & vbCrLf & _
                          "(예: 1,3,5-8)", _
-                         "PPT 도식 자동변환 - 슬라이드 선택", "")
+                         "PPT 도식 자동변환 - 슬라이드 선택", defaultSlides)
 
     If slidesStr = "" Then Exit Sub
 
     RunPlugin projectPath, "--slides " & slidesStr
 End Sub
 
+'===============================================================
+' 내부 함수
+'===============================================================
+
 '---------------------------------------------------------------
-' 플러그인 실행 (내부 함수)
+' 플러그인 실행
 '---------------------------------------------------------------
 Private Sub RunPlugin(projectPath As String, extraArgs As String)
     Dim cmd As String
@@ -96,32 +124,34 @@ Private Sub RunPlugin(projectPath As String, extraArgs As String)
     Set wsh = CreateObject("WScript.Shell")
     wsh.CurrentDirectory = projectPath
 
-    ' 명령 프롬프트 창에서 실행 (결과 확인 가능)
+    ' 명령 프롬프트 창에서 실행 (진행 상황 확인 가능)
     wsh.Run "cmd /k """ & cmd & """", 1, False
 
     Set wsh = Nothing
 End Sub
 
 '---------------------------------------------------------------
-' 프로젝트 경로 가져오기
+' 프로젝트 경로 탐색
 '---------------------------------------------------------------
 Private Function GetProjectPath() As String
-    ' 환경변수에서 경로 확인
     Dim wsh As Object
     Set wsh = CreateObject("WScript.Shell")
 
+    ' 1. 환경변수 PPTAUTOMAKE_PATH 확인
     On Error Resume Next
     Dim envPath As String
     envPath = wsh.Environment("User")("PPTAUTOMAKE_PATH")
     On Error GoTo 0
 
-    If envPath <> "" And Dir(envPath & "\src\ppt_plugin.py") <> "" Then
-        GetProjectPath = envPath
-        Set wsh = Nothing
-        Exit Function
+    If envPath <> "" Then
+        If Dir(envPath & "\src\ppt_plugin.py") <> "" Then
+            GetProjectPath = envPath
+            Set wsh = Nothing
+            Exit Function
+        End If
     End If
 
-    ' 기본 경로 확인
+    ' 2. 기본 경로 탐색
     Dim defaultPaths As Variant
     defaultPaths = Array( _
         wsh.ExpandEnvironmentStrings("%USERPROFILE%") & "\pptautomake", _
@@ -141,4 +171,26 @@ Private Function GetProjectPath() As String
 
     Set wsh = Nothing
     GetProjectPath = ""
+End Function
+
+'---------------------------------------------------------------
+' 현재 선택된 슬라이드 번호 목록 반환
+'---------------------------------------------------------------
+Private Function GetSelectedSlideNumbers() As String
+    On Error GoTo NoSelection
+    Dim sel As SlideRange
+    Set sel = ActiveWindow.Selection.SlideRange
+
+    Dim result As String
+    Dim i As Long
+    For i = 1 To sel.Count
+        If result <> "" Then result = result & ","
+        result = result & sel.Item(i).SlideNumber
+    Next i
+
+    GetSelectedSlideNumbers = result
+    Exit Function
+
+NoSelection:
+    GetSelectedSlideNumbers = ""
 End Function
