@@ -1,7 +1,11 @@
 """Module 3: DiagramAnalyzer - 도식 상세 분석 (Vision AI 연동)
 
-도식으로 분류된 이미지는 Claude Vision API로,
+도식으로 분류된 이미지는 Vision API(Anthropic 또는 Ollama)로,
 그룹 도형은 XML 구조 분석으로 상세 구조를 파악한다.
+
+지원 백엔드:
+  - anthropic: Claude Vision API (ANTHROPIC_API_KEY 필요)
+  - ollama: 로컬 오픈소스 비전 모델 (API 키 불필요, ollama 설치 필요)
 """
 
 from __future__ import annotations
@@ -88,13 +92,18 @@ class DiagramAnalyzer:
 
     def __init__(self, config: dict | None = None):
         self.config = config or {}
+        self.vision_backend = self.config.get('vision_backend', 'ollama')
         self.vision_model = self.config.get('vision_model', 'claude-sonnet-4-20250514')
+        self.ollama_model = self.config.get('ollama_model', 'llama3.2-vision')
+        self.ollama_base_url = self.config.get('ollama_base_url', 'http://localhost:11434')
         self.api_timeout = self.config.get('api_timeout', self.API_TIMEOUT)
         self.max_retries = self.config.get('max_retries', self.MAX_RETRIES)
         self._anthropic_client = None
+        self._ollama_client = None
 
     @property
     def anthropic_client(self):
+        """Anthropic API 클라이언트를 반환한다 (lazy 초기화)."""
         if self._anthropic_client is None:
             try:
                 import anthropic
@@ -103,6 +112,24 @@ class DiagramAnalyzer:
                 logger.error("Anthropic 클라이언트 초기화 실패: %s", e)
                 raise
         return self._anthropic_client
+
+    @property
+    def ollama_client(self):
+        """Ollama 클라이언트를 반환한다 (lazy 초기화)."""
+        if self._ollama_client is None:
+            try:
+                import ollama
+                self._ollama_client = ollama.Client(host=self.ollama_base_url)
+            except ImportError:
+                logger.error(
+                    "ollama 패키지가 설치되지 않았습니다. "
+                    "'pip install ollama' 실행 후 다시 시도하세요."
+                )
+                raise
+            except Exception as e:
+                logger.error("Ollama 클라이언트 초기화 실패: %s", e)
+                raise
+        return self._ollama_client
 
     def analyze(self, classified_element: ClassifiedElement) -> DiagramData:
         """분류된 요소를 상세 분석하여 DiagramData를 반환한다."""
@@ -120,7 +147,7 @@ class DiagramAnalyzer:
     def _analyze_image_diagram(
         self, classified_element: ClassifiedElement
     ) -> DiagramData:
-        """이미지 도식을 Claude Vision API로 분석한다."""
+        """이미지 도식을 Vision API로 분석한다 (백엔드 자동 선택)."""
         element = classified_element.element
         image_blob = element.content
 
@@ -133,8 +160,16 @@ class DiagramAnalyzer:
         if content_type not in ('image/png', 'image/jpeg', 'image/gif', 'image/webp'):
             image_blob, content_type = self._convert_image(image_blob, content_type)
 
+        if self.vision_backend == 'ollama':
+            return self._call_ollama_vision(image_blob, content_type)
+        else:
+            return self._call_anthropic_vision(image_blob, content_type)
+
+    def _call_anthropic_vision(
+        self, image_blob: bytes, content_type: str
+    ) -> DiagramData:
+        """Anthropic Claude Vision API로 도식을 분석한다."""
         image_b64 = base64.b64encode(image_blob).decode('utf-8')
-        last_error = None
 
         for attempt in range(self.max_retries):
             try:
@@ -174,17 +209,65 @@ class DiagramAnalyzer:
                 return self._json_to_diagram_data(diagram_json)
 
             except Exception as e:
-                last_error = e
                 if attempt < self.max_retries - 1:
                     delay = self.RETRY_DELAYS[min(attempt, len(self.RETRY_DELAYS) - 1)]
                     logger.warning(
-                        "Vision API 호출 실패 (시도 %d/%d): %s - %d초 후 재시도",
+                        "Anthropic API 호출 실패 (시도 %d/%d): %s - %d초 후 재시도",
                         attempt + 1, self.max_retries, e, delay,
                     )
                     time.sleep(delay)
                 else:
                     logger.error(
-                        "Vision API 분석 실패 (%d회 시도 후 포기): %s",
+                        "Anthropic API 분석 실패 (%d회 시도 후 포기): %s",
+                        self.max_retries, e,
+                    )
+
+        return DiagramData(diagram_type="unknown")
+
+    def _call_ollama_vision(
+        self, image_blob: bytes, content_type: str
+    ) -> DiagramData:
+        """Ollama 로컬 비전 모델로 도식을 분석한다 (API 키 불필요)."""
+        image_b64 = base64.b64encode(image_blob).decode('utf-8')
+
+        for attempt in range(self.max_retries):
+            try:
+                response = self.ollama_client.chat(
+                    model=self.ollama_model,
+                    messages=[{
+                        "role": "user",
+                        "content": VISION_ANALYSIS_PROMPT,
+                        "images": [image_b64],
+                    }],
+                    options={
+                        "temperature": 0.1,
+                        "num_predict": 4096,
+                    },
+                )
+
+                response_text = response['message']['content']
+                diagram_json = self._parse_json_response(response_text)
+
+                if not diagram_json:
+                    logger.warning(
+                        "Ollama 응답 JSON 파싱 실패 (시도 %d/%d): 빈 결과",
+                        attempt + 1, self.max_retries,
+                    )
+                    return DiagramData(diagram_type="unknown")
+
+                return self._json_to_diagram_data(diagram_json)
+
+            except Exception as e:
+                if attempt < self.max_retries - 1:
+                    delay = self.RETRY_DELAYS[min(attempt, len(self.RETRY_DELAYS) - 1)]
+                    logger.warning(
+                        "Ollama API 호출 실패 (시도 %d/%d): %s - %d초 후 재시도",
+                        attempt + 1, self.max_retries, e, delay,
+                    )
+                    time.sleep(delay)
+                else:
+                    logger.error(
+                        "Ollama API 분석 실패 (%d회 시도 후 포기): %s",
                         self.max_retries, e,
                     )
 

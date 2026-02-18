@@ -1,8 +1,11 @@
 analysis:
   min_diagram_area_ratio: 0.25    # 이미지를 도식으로 판별하는 최소 슬라이드 면적 비율
-  vision_model: claude-sonnet-4-20250514  # Claude Vision API 모델
+  vision_backend: ollama           # anthropic / ollama (오픈소스, 로컬 실행)
+  vision_model: claude-sonnet-4-20250514  # Anthropic 사용 시 모델명
+  ollama_model: llama3.2-vision    # Ollama 사용 시 비전 모델명
+  ollama_base_url: http://localhost:11434  # Ollama 서버 주소
   max_concurrent_api_calls: 3     # 최대 동시 API 호출 수
-  api_timeout: 60                 # Vision API 타임아웃 (초)
+  api_timeout: 120                # Vision API 타임아웃 (초, Ollama 로컬은 느릴 수 있음)
   max_retries: 3                  # API 호출 실패 시 재시도 횟수
 
 builder:
