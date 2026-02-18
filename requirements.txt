@@ -6,3 +6,4 @@ PyYAML>=6.0
 flask>=3.0.0
 flask-cors>=4.0.0
 pyOpenSSL>=23.0.0
+pywin32>=306; sys_platform == "win32"
