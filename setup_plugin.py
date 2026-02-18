@@ -360,20 +360,44 @@ def register_addin(ppam_path: str):
         return False
 
 
-def check_api_key():
-    """ANTHROPIC_API_KEY 환경변수를 확인한다."""
-    print('[5/5] API 키 확인...')
+def check_vision_backend():
+    """비전 백엔드 설정을 확인한다."""
+    print('[5/5] 비전 백엔드 확인...')
 
-    key = os.environ.get('ANTHROPIC_API_KEY', '')
-    if key:
-        masked = key[:8] + '...' + key[-4:]
-        print(f'  [OK] ANTHROPIC_API_KEY 설정됨: {masked}')
-        return True
-    else:
-        print('  [경고] ANTHROPIC_API_KEY가 설정되지 않았습니다.')
-        print('         도식 분석(Claude Vision API) 사용 시 필요합니다.')
-        print('         설정 방법: setx ANTHROPIC_API_KEY "sk-ant-..."')
-        return False
+    # config.yaml에서 백엔드 확인
+    config_path = PROJECT_ROOT / 'config.yaml'
+    backend = 'local'
+    if config_path.exists():
+        try:
+            import yaml
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f) or {}
+            backend = config.get('analysis', {}).get('vision_backend', 'local')
+        except Exception:
+            pass
+
+    if backend == 'local':
+        print('  [OK] 비전 백엔드: local (서버/API 키 불필요)')
+        print('       최초 실행 시 비전 모델을 자동 다운로드합니다.')
+        try:
+            import transformers
+            print(f'  [OK] transformers {transformers.__version__} 설치됨')
+        except ImportError:
+            print('  [경고] transformers 미설치. 실행 시 자동 설치됩니다.')
+    elif backend == 'ollama':
+        print('  [OK] 비전 백엔드: ollama')
+        print('       Ollama가 실행 중이어야 합니다: https://ollama.com')
+    elif backend == 'anthropic':
+        key = os.environ.get('ANTHROPIC_API_KEY', '')
+        if key:
+            masked = key[:8] + '...' + key[-4:]
+            print(f'  [OK] 비전 백엔드: anthropic (API 키: {masked})')
+        else:
+            print('  [경고] ANTHROPIC_API_KEY가 설정되지 않았습니다.')
+            print('         설정 방법: setx ANTHROPIC_API_KEY "sk-ant-..."')
+            print('         또는 config.yaml에서 vision_backend를 local로 변경')
+
+    return True
 
 
 def print_success(ppam_path: str | None):
@@ -436,8 +460,8 @@ def main():
         print('[4/5] 애드인 등록 건너뜀 (수동 설치 필요)')
     print()
 
-    # 5. API 키 확인
-    check_api_key()
+    # 5. 비전 백엔드 확인
+    check_vision_backend()
 
     # 완료
     print_success(ppam_path)
