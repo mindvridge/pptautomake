@@ -6,6 +6,7 @@
 지원 백엔드:
   - local: 로컬 비전 모델 직접 로드 (서버/API 키 불필요, pip만으로 완결)
   - ollama: Ollama 로컬 서버 경유 (ollama 별도 설치 필요)
+  - gemini: Google Gemini API (GEMINI_API_KEY 필요, 저렴)
   - anthropic: Claude Vision API (ANTHROPIC_API_KEY 필요)
 """
 
@@ -95,12 +96,14 @@ class DiagramAnalyzer:
         self.config = config or {}
         self.vision_backend = self.config.get('vision_backend', 'local')
         self.vision_model = self.config.get('vision_model', 'claude-sonnet-4-20250514')
+        self.gemini_model = self.config.get('gemini_model', 'gemini-2.5-flash')
         self.ollama_model = self.config.get('ollama_model', 'llama3.2-vision')
         self.ollama_base_url = self.config.get('ollama_base_url', 'http://localhost:11434')
         self.local_model = self.config.get('local_model', 'Qwen/Qwen2.5-VL-7B-Instruct')
         self.api_timeout = self.config.get('api_timeout', self.API_TIMEOUT)
         self.max_retries = self.config.get('max_retries', self.MAX_RETRIES)
         self._anthropic_client = None
+        self._gemini_client = None
         self._ollama_client = None
         self._local_model = None
         self._local_tokenizer = None
@@ -116,6 +119,24 @@ class DiagramAnalyzer:
                 logger.error("Anthropic 클라이언트 초기화 실패: %s", e)
                 raise
         return self._anthropic_client
+
+    @property
+    def gemini_client(self):
+        """Google Gemini API 클라이언트를 반환한다 (lazy 초기화)."""
+        if self._gemini_client is None:
+            try:
+                from google import genai
+                self._gemini_client = genai.Client()
+            except ImportError:
+                logger.error(
+                    "google-genai 패키지가 설치되지 않았습니다. "
+                    "'pip install google-genai' 실행 후 다시 시도하세요."
+                )
+                raise
+            except Exception as e:
+                logger.error("Gemini 클라이언트 초기화 실패: %s", e)
+                raise
+        return self._gemini_client
 
     def _is_qwen_vl(self) -> bool:
         """현재 모델이 Qwen2.5-VL 계열인지 확인한다."""
@@ -238,6 +259,8 @@ class DiagramAnalyzer:
             return self._call_local_vision(image_blob, content_type)
         elif self.vision_backend == 'ollama':
             return self._call_ollama_vision(image_blob, content_type)
+        elif self.vision_backend == 'gemini':
+            return self._call_gemini_vision(image_blob, content_type)
         else:
             return self._call_anthropic_vision(image_blob, content_type)
 
@@ -295,6 +318,56 @@ class DiagramAnalyzer:
                 else:
                     logger.error(
                         "Anthropic API 분석 실패 (%d회 시도 후 포기): %s",
+                        self.max_retries, e,
+                    )
+
+        return DiagramData(diagram_type="unknown")
+
+    def _call_gemini_vision(
+        self, image_blob: bytes, content_type: str
+    ) -> DiagramData:
+        """Google Gemini API로 도식을 분석한다 (저렴, GEMINI_API_KEY 필요)."""
+        from google.genai import types
+
+        # PIL Image로 변환
+        import io
+        from PIL import Image
+        image = Image.open(io.BytesIO(image_blob)).convert('RGB')
+
+        for attempt in range(self.max_retries):
+            try:
+                response = self.gemini_client.models.generate_content(
+                    model=self.gemini_model,
+                    contents=[image, VISION_ANALYSIS_PROMPT],
+                    config=types.GenerateContentConfig(
+                        temperature=0.1,
+                        max_output_tokens=4096,
+                    ),
+                )
+
+                response_text = response.text
+                diagram_json = self._parse_json_response(response_text)
+
+                if not diagram_json:
+                    logger.warning(
+                        "Gemini 응답 JSON 파싱 실패 (시도 %d/%d): 빈 결과",
+                        attempt + 1, self.max_retries,
+                    )
+                    return DiagramData(diagram_type="unknown")
+
+                return self._json_to_diagram_data(diagram_json)
+
+            except Exception as e:
+                if attempt < self.max_retries - 1:
+                    delay = self.RETRY_DELAYS[min(attempt, len(self.RETRY_DELAYS) - 1)]
+                    logger.warning(
+                        "Gemini API 호출 실패 (시도 %d/%d): %s - %d초 후 재시도",
+                        attempt + 1, self.max_retries, e, delay,
+                    )
+                    time.sleep(delay)
+                else:
+                    logger.error(
+                        "Gemini API 분석 실패 (%d회 시도 후 포기): %s",
                         self.max_retries, e,
                     )
 

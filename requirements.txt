@@ -11,6 +11,8 @@ qwen-vl-utils>=0.0.8
 accelerate>=0.30.0
 # Vision 백엔드 (ollama - 선택)
 ollama>=0.4.0
+# Vision 백엔드 (gemini - 선택, 저렴)
+google-genai>=1.0.0
 # Vision 백엔드 (anthropic - 선택)
 anthropic>=0.40.0
 # 웹 서버 (선택)

@@ -387,6 +387,15 @@ def check_vision_backend():
     elif backend == 'ollama':
         print('  [OK] 비전 백엔드: ollama')
         print('       Ollama가 실행 중이어야 합니다: https://ollama.com')
+    elif backend == 'gemini':
+        key = os.environ.get('GEMINI_API_KEY', '') or os.environ.get('GOOGLE_API_KEY', '')
+        if key:
+            masked = key[:8] + '...' + key[-4:]
+            print(f'  [OK] 비전 백엔드: gemini (API 키: {masked})')
+        else:
+            print('  [경고] GEMINI_API_KEY가 설정되지 않았습니다.')
+            print('         설정 방법: setx GEMINI_API_KEY "AIza..."')
+            print('         https://aistudio.google.com/apikey 에서 발급')
     elif backend == 'anthropic':
         key = os.environ.get('ANTHROPIC_API_KEY', '')
         if key:

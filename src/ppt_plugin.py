@@ -204,6 +204,9 @@ def run_pipeline(
         model_name = analysis_config.get('ollama_model', 'llama3.2-vision')
         print(f'[3/4] 도식 상세 분석 중 (Ollama: {model_name})...')
         _check_ollama_ready(analysis_config)
+    elif backend == 'gemini':
+        model_name = analysis_config.get('gemini_model', 'gemini-2.5-flash')
+        print(f'[3/4] 도식 상세 분석 중 (Gemini: {model_name})...')
     else:
         print('[3/4] 도식 상세 분석 중 (Anthropic API)...')
     diagram_analyzer = DiagramAnalyzer(analysis_config)
